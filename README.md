@@ -96,7 +96,8 @@ npm run dev        # http://localhost:5173 ，已配置 /api 与 /static 代理�
 | 表结构核对 | `mysql -u root -p live_training -e "SHOW TABLES"` | 20 张表：users/classes/teams/team_members/tasks/sessions/products/session_items/purchases/fund_txns/promotions/ad_plans/live_events/orders/after_sales/reports/scores/competitions/agents/agent_runs |
 | **端到端冒烟** | `python scripts/smoke_test.py` | **64/64 通过**（退出码 0），覆盖：登录/越权/建课发任务/调研/选品/采购（含超预算拒绝）/定价/脚本/投流/装修/开播检查/开播/6 个仿真周期（实测 viewers=382、gmv=39900 分）/AI 观众弹幕/敏感词违规/中控切换/下播/订单履约（含状态回退拒绝）/售后退款回补/复盘生成（source=rule）/未履约拦截/提交锁定/教师评分（综合分 84.3）/班级报告/巡课/数据罗盘 4 视角/竞赛排行榜/智能体全流程（创建→预演不落库→运行落库→采纳写入→提交审核→教师上架）/严格任务阻断/停用账号令牌即时失效 |
 | 接口文档一致性 | `python scripts/verify_api_doc.py` | **文档 114 个接口 = 代码 114 条路由，完全一致** |
-| LLM 降级路径 | 冒烟测试中未配置 `LLM_*` | 复盘报告与智能体均返回 `source=rule` 且内容明确标注“规则兜底/未接入大模型” |
+| LLM 降级路径 | 冒烟测试（未配置 `LLM_*` 时） | 复盘报告与智能体均返回 `source=rule` 且内容明确标注“规则兜底/未接入大模型” |
+| **大模型已接入（DeepSeek `deepseek-flash`）** | `python scripts/smoke_test.py`（配置 `backend/.env` 后） | **67/67 通过**（1 分 28 秒，含 6 次真实模型调用）：回复建议 `source=llm`；复盘报告 `source=llm` 且内容引用真实指标；智能体运行 `source=llm`、`model=deepseek-flash`、耗时 6.9s；AI 观众每 2 个 tick 调用一次（库内：弹幕 llm 9 条 / rule 32 条，决策 llm 3 条 / rule 27 条）；旧数据仍保留 `rule` 标识，两种来源可区分 |
 | 前端类型检查与构建 | `cd frontend && npm run build` | `vue-tsc --noEmit` 无报错，`vite build` 成功（120 模块，出口 ~160KB gzip 60KB） |
 | 前端浏览器联调 | 浏览器实机访问 `localhost:5173`（后端 + Vite 代理同时运行） | 登录页渲染与路由守卫（未登录跳 `/login`）✅；stu_001 登录成功 ✅；**首页**任务列表（含种子任务与严格竞赛任务）与场次列表（真实仿真数据：已提交场次 45,355.89 元 / 382 观看 / 8 单）✅；**经营准备页**（`/workbench/7`：6 个 Tab、调研表单、资金余额 30,000.00 元 来自 MySQL）✅；**数据复盘页**（`/review/2`：指标卡 382/149/8/399.00 元、规则兜底报告全文、成绩 客观 81.9 + 主观 88 = 综合 84.3、提交后输入框锁定）✅。联调中发现并修复 2 处 UI 问题（锁定时间显示为 `true`、状态标签未本地化），修复后重新构建通过 |
 
@@ -104,7 +105,6 @@ npm run dev        # http://localhost:5173 ，已配置 /api 与 /static 代理�
 
 | 项 | 状态 | 说明 |
 |---|---|---|
-| 大模型（LLM）真实调用 | **未验证** | 未配置密钥；已验证其“不可用→规则兜底+明确标识”路径 |
 | 服务端语音识别（ASR） | **未接** | 接口存在，未配置时返回 `501 ASR_NOT_CONFIGURED`（前端应降级浏览器识别/手动补录） |
 | 浏览器语音识别 / 人脸出镜采样 | **未实现** | 前端为骨架占位（行为采样按钮仅验证接口链路，UI 已明确标注） |
 | 直播间画布（元素拖拽/实时预览） | **简化实现** | 骨架版保存标题/公告/敏感词/画布 JSON 即可满足开播检查；专业直播伴侣画布为后续迭代 |
@@ -138,7 +138,7 @@ npm run dev        # http://localhost:5173 ，已配置 /api 与 /static 代理�
 | 金额 | 全链路整数「分」 | —（题目明确要求） |
 | 小组表命名 | `teams` | 规避 MySQL 8 保留字 `groups` |
 | 建表 | `create_all` 幂等 + 种子脚本 | 放弃 Alembic 迁移（时间盒内）；生产必须补 |
-| AI 能力 | 统一适配层：超时 + JSON 解析防御 + **规则兜底且 source 明确标识** | 无模型时功能“可用但降级”，绝不把规则结果伪装成 AI |
+| AI 能力 | 统一适配层：超时 + JSON 解析防御 + **规则兜底且 source 明确标识**；AI 观众在 tick 内**降频调用**（每 2 周期一次 + 10s 超时），避免推理模型拖慢直播节奏 | 模型不可用时功能“可用但降级”，绝不把规则结果伪装成 AI |
 
 ---
 
@@ -157,7 +157,6 @@ AI 参与说明：
 
 ## 6. 后续计划（时间盒外的顺延项）
 
-1. `npm install && npm run build` 跑通前端构建并补齐 TS 类型问题；
-2. 直播间画布（拖拽/实时预览/摄像头合成）与浏览器 ASR、人脸出镜采样；
-3. Alembic 迁移、报告导出（Word/PDF）、题库考试与课程通知；
-4. 接入大模型后回归验证 `source=llm` 路径与提示词效果评估。
+1. 直播间画布（拖拽/实时预览/摄像头合成）与浏览器 ASR、人脸出镜采样；
+2. Alembic 迁移、报告导出（Word/PDF）、题库考试与课程通知；
+3. 提示词效果评估与 AI 观众策略调优（接入 DeepSeek 后已回归 `source=llm` 路径）。

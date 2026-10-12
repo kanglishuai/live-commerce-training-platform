@@ -23,6 +23,9 @@ class Settings(BaseSettings):
     llm_api_key: str = ""
     llm_model: str = ""
     llm_timeout_seconds: float = 30.0
+    # AI 观众在直播 tick 内调用模型：降频 + 短超时，避免推理模型拖慢直播节奏（超时即规则兜底）
+    llm_audience_every_n_ticks: int = 2
+    llm_audience_timeout_seconds: float = 10.0
 
     asr_base_url: str = ""
     asr_api_key: str = ""

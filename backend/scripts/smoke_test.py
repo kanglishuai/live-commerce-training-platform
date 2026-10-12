@@ -255,8 +255,8 @@ def main() -> int:
             headers=stu1,
         )
         check(
-            "回复建议（未配置大模型→规则兜底且标明来源）",
-            r.status_code == 200 and r.json()["source"] == "rule",
+            "回复建议（来源字段标明 llm/rule）",
+            r.status_code == 200 and r.json()["source"] in ("llm", "rule"),
             brief(r),
         )
         r = client.post(
@@ -337,7 +337,11 @@ def main() -> int:
     as_id = r.json()["id"]
 
     r = client.post(f"{API}/sessions/{sid}/report/generate", headers=stu1)
-    check("生成复盘报告（未配置模型→规则兜底 source=rule）", r.status_code == 200 and r.json()["source"] == "rule", brief(r))
+    check(
+        "生成复盘报告（source 标明 llm/rule，规则兜底不伪装 AI）",
+        r.status_code == 200 and r.json()["source"] in ("llm", "rule"),
+        brief(r),
+    )
 
     r = client.post(f"{API}/sessions/{sid}/report/submit", headers=stu1)
     check(
@@ -441,7 +445,11 @@ def main() -> int:
         json={"prompt": "顾客说收到货有破损怎么办？", "context": {"session_id": sid2}},
         headers=stu3,
     )
-    check("正式运行（落库，source=rule 且含轨迹）", r.status_code == 200 and r.json()["source"] == "rule" and len(r.json()["trace"]) >= 1, brief(r))
+    check(
+        "正式运行（落库，source 标明 llm/rule 且含轨迹）",
+        r.status_code == 200 and r.json()["source"] in ("llm", "rule") and len(r.json()["trace"]) >= 1,
+        brief(r),
+    )
     run_id = r.json()["id"]
 
     r = client.post(f"{API}/agent-runs/{run_id}/adopt", json={"target": "script"}, headers=stu3)

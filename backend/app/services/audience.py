@@ -16,6 +16,7 @@ from sqlalchemy import desc, select
 from sqlalchemy.orm import Session as OrmSession
 
 from app.core.enums import FundTxnType, LiveEventType, OrderStatus
+from app.core.config import get_settings
 from app.models.commerce import SessionItem
 from app.models.live import LiveEvent, Order
 from app.models.task import TrainingSession
@@ -124,7 +125,9 @@ def _rule_comments(
 
 def _llm_comments(context: dict) -> tuple[list[dict[str, str]], str]:
     data, source = ai.chat_json(
-        prompts.audience_comment(context), system=prompts.AUDIENCE_SYSTEM
+        prompts.audience_comment(context),
+        system=prompts.AUDIENCE_SYSTEM,
+        timeout=get_settings().llm_audience_timeout_seconds,
     )
     comments = data.get("comments") or []
     if not isinstance(comments, list):
@@ -184,7 +187,11 @@ def step(
     source = "rule"
     reason = "规则兜底：按画像权重与当前商品生成"
     comments = _rule_comments(rng, item, recent_speech, snapshot.get("online", 0))
-    if ai.is_llm_configured() and snapshot.get("online", 0) > 0:
+    # 推理模型较慢：按 N 个 tick 降频调用，超时（llm_audience_timeout_seconds）即规则兜底，
+    # 保证直播节奏不被模型延迟拖垮
+    tick_count = int(snapshot.get("tick_count", 0))
+    every_n = max(1, get_settings().llm_audience_every_n_ticks)
+    if ai.is_llm_configured() and snapshot.get("online", 0) > 0 and tick_count % every_n == 0:
         try:
             comments, source = _llm_comments(context)
             reason = "大模型依据场次上下文生成"

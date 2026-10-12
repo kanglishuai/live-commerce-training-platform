@@ -188,18 +188,29 @@ async function manualTick() {
   }
 }
 
+let ticking = false
+
+/** 串行推进：上一次 tick 未返回前不发起下一次（接入大模型后单次 tick 可能变慢） */
+async function tickOnce() {
+  if (ticking) return
+  ticking = true
+  try {
+    const result = await api.live.tick(sessionId)
+    status.value = result.status
+    snapshot.value = result.snapshot
+    if (result.new_events.length) await pullEvents()
+  } catch (e) {
+    error.value = (e as Error).message
+  } finally {
+    ticking = false
+  }
+}
+
 function startTimer() {
   stopTimer()
-  timer = window.setInterval(async () => {
-    if (status.value !== 'live') return
-    try {
-      const result = await api.live.tick(sessionId)
-      status.value = result.status
-      snapshot.value = result.snapshot
-      if (result.new_events.length) await pullEvents()
-    } catch (e) {
-      error.value = (e as Error).message
-    }
+  timer = window.setInterval(() => {
+    if (status.value !== 'live' || !autoTick.value) return
+    void tickOnce()
   }, tickIntervalMs)
 }
 

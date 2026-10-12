@@ -40,9 +40,14 @@ def _extract_json(text: str) -> dict:
 
 
 def chat(
-    prompt: str, *, system: str = "", temperature: float = 0.7, retries: int = 1
+    prompt: str,
+    *,
+    system: str = "",
+    temperature: float = 0.7,
+    retries: int = 1,
+    timeout: float | None = None,
 ) -> tuple[str, str]:
-    """调用 LLM，返回 (文本, "llm")。失败抛 AiUnavailable。"""
+    """调用 LLM，返回 (文本, "llm")。失败抛 AiUnavailable。timeout 为空时用全局配置。"""
     settings = get_settings()
     if not is_llm_configured():
         raise AiUnavailable("未配置 LLM（LLM_BASE_URL / LLM_API_KEY / LLM_MODEL）")
@@ -50,6 +55,7 @@ def chat(
     messages = ([{"role": "system", "content": system}] if system else []) + [
         {"role": "user", "content": prompt}
     ]
+    effective_timeout = timeout if timeout is not None else settings.llm_timeout_seconds
     last_error: Exception | None = None
     for attempt in range(retries + 1):
         try:
@@ -61,7 +67,7 @@ def chat(
                     "messages": messages,
                     "temperature": temperature,
                 },
-                timeout=settings.llm_timeout_seconds,
+                timeout=effective_timeout,
             )
             resp.raise_for_status()
             text = resp.json()["choices"][0]["message"]["content"]
@@ -72,9 +78,11 @@ def chat(
     raise AiUnavailable(f"LLM 调用失败：{last_error}")
 
 
-def chat_json(prompt: str, *, system: str = "", retries: int = 1) -> tuple[dict, str]:
+def chat_json(
+    prompt: str, *, system: str = "", retries: int = 1, timeout: float | None = None
+) -> tuple[dict, str]:
     """要求模型输出 JSON 并完成解析防御，返回 (dict, "llm")。"""
-    text, _ = chat(prompt, system=system, retries=retries)
+    text, _ = chat(prompt, system=system, retries=retries, timeout=timeout)
     try:
         return _extract_json(text), "llm"
     except (ValueError, json.JSONDecodeError) as exc:
