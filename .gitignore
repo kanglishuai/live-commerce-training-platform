@@ -1,0 +1,22 @@
+# Office 临时/锁文件
+~$*.docx
+~$*.doc
+~$*.xlsx
+~$*.pptx
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+
+# 运行态数据
+*.db
+*.sqlite3
+
+# 前端
+node_modules/
+dist/
+.idea/
+.vscode/
