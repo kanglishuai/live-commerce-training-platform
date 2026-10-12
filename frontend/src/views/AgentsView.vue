@@ -118,6 +118,38 @@
           <button class="btn" style="margin-top:12px" @click="createAgent">创建（草稿）</button>
           <p class="muted" style="margin-top:8px">完成度 = 命名 20% + 职责 25% + 行为指令 35% + 工具 20%；低于 60% 不能提交审核。</p>
         </div>
+
+        <div v-if="isTeacher" class="card">
+          <h3>智能体作业（教师）</h3>
+          <div class="row">
+            <select v-model.number="assignForm.task_id" class="select" style="max-width:280px">
+              <option :value="0">— 选择任务 —</option>
+              <option v-for="t in myTasks" :key="t.id" :value="t.id">{{ t.title }}</option>
+            </select>
+            <select v-model.number="assignForm.agent_id" class="select" style="max-width:220px">
+              <option :value="0">— 选择已上架智能体 —</option>
+              <option v-for="a in assignableAgents" :key="a.id" :value="a.id">{{ a.name }}</option>
+            </select>
+            <input v-model="assignForm.instructions" class="input" style="max-width:320px" placeholder="作业说明，如：用它完成 3 个高频咨询的应答" />
+            <button class="btn sm" @click="assignAgent">布置作业</button>
+          </div>
+          <div class="row" style="margin-top:10px">
+            <button class="btn ghost sm" :disabled="!assignForm.task_id" @click="loadRuns">查看该任务运行记录</button>
+            <span class="muted">学生运行记录含来源（llm/rule）、采纳目标与轨迹，可作为人机协同的评分依据</span>
+          </div>
+          <table v-if="assignRuns.length" class="table" style="margin-top:10px">
+            <thead><tr><th>学生</th><th>智能体</th><th>来源</th><th>采纳到</th><th>时间</th></tr></thead>
+            <tbody>
+              <tr v-for="r in assignRuns" :key="r.id">
+                <td>{{ r.student_name || r.user_id }}</td>
+                <td>#{{ r.agent_id }}</td>
+                <td><span class="tag" :class="r.source === 'llm' ? 'ended' : 'warn'">{{ r.source }}</span></td>
+                <td>{{ r.adopted_target || '—' }}</td>
+                <td class="muted">{{ r.created_at }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   </div>
@@ -126,7 +158,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { api } from '../api'
-import type { Agent, AgentRun } from '../api/types'
+import type { Agent, AgentRun, Task } from '../api/types'
 import { useAuthStore } from '../stores/auth'
 
 const auth = useAuthStore()
@@ -138,6 +170,14 @@ const runSessionId = ref<number | null>(null)
 const runResult = ref<(AgentRun & { persist?: boolean }) | null>(null)
 const error = ref('')
 const notice = ref('')
+
+// 教师：智能体作业布置与运行记录
+const myTasks = ref<Task[]>([])
+const assignForm = reactive({ task_id: 0, agent_id: 0, instructions: '' })
+const assignRuns = ref<Array<Record<string, any>>>([])
+const assignableAgents = computed(() =>
+  agents.value.filter((a) => a.status === 'published')
+)
 
 const createForm = reactive({
   name: '客服应答助手',
@@ -244,7 +284,35 @@ async function review(agent: Agent, action: 'approve' | 'reject') {
   } catch (e) { error.value = (e as Error).message }
 }
 
-onMounted(loadAgents)
+async function loadTeacherData() {
+  if (!auth.isTeacher) return
+  try {
+    const page = await api.tasks.list({ page_size: 50 })
+    myTasks.value = page.items.filter((t) => t.status === 'published')
+    if (!assignForm.task_id && myTasks.value.length) assignForm.task_id = myTasks.value[0].id
+  } catch (e) { error.value = (e as Error).message }
+}
+
+async function assignAgent() {
+  error.value = ''; notice.value = ''
+  try {
+    await api.tasks.assignAgent(assignForm.task_id, assignForm.agent_id, assignForm.instructions)
+    notice.value = '已布置智能体作业（学生端任务详情可见）'
+  } catch (e) { error.value = (e as Error).message }
+}
+
+async function loadRuns() {
+  error.value = ''
+  try {
+    const data = await api.tasks.agentRuns(assignForm.task_id)
+    assignRuns.value = data.items
+  } catch (e) { error.value = (e as Error).message }
+}
+
+onMounted(async () => {
+  await loadAgents()
+  await loadTeacherData()
+})
 </script>
 
 <style scoped>

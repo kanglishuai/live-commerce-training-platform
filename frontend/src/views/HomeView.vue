@@ -57,7 +57,13 @@
             <td>{{ t.market_heat }} / {{ t.competition_level }}</td>
             <td>
               <button v-if="t.status === 'draft'" class="btn sm" @click="publishTask(t)">发布</button>
-              <button v-else-if="!auth.isTeacher" class="btn sm" @click="createSession(t)">创建场次</button>
+              <span v-else-if="!auth.isTeacher" class="row">
+                <select v-if="t.mode === 'team' && myTeams.length" v-model.number="teamChoice[t.id]" class="select" style="width:150px">
+                  <option :value="0">选择团队（协作）</option>
+                  <option v-for="tm in myTeams" :key="tm.id" :value="tm.id">{{ tm.name }}</option>
+                </select>
+                <button class="btn sm" @click="createSession(t)">创建场次</button>
+              </span>
               <span v-else class="muted">—</span>
             </td>
           </tr>
@@ -105,6 +111,8 @@ const router = useRouter()
 const tasks = ref<Task[]>([])
 const sessions = ref<Session[]>([])
 const classes = ref<Array<Record<string, any>>>([])
+const myTeams = ref<Array<Record<string, any>>>([])
+const teamChoice = reactive<Record<number, number>>({})
 const showCreate = ref(false)
 const createError = ref('')
 
@@ -125,6 +133,14 @@ async function load() {
   if (auth.isTeacher) {
     classes.value = await api.classes.list()
     if (!form.class_id && classes.value.length) form.class_id = classes.value[0].id
+  } else if (auth.user?.class_id) {
+    // 学生：加载本人所在的团队（团队任务可协作开单，岗位分工在团队成员中配置）
+    try {
+      const teams = await api.classes.teams(auth.user.class_id)
+      myTeams.value = teams.filter((t: Record<string, any>) =>
+        (t.members || []).some((m: Record<string, any>) => m.user_id === auth.user?.id)
+      )
+    } catch { myTeams.value = [] }
   }
 }
 
@@ -153,7 +169,9 @@ async function publishTask(task: Task) {
 }
 
 async function createSession(task: Task) {
-  const session = await api.sessions.createForTask(task.id, {})
+  const payload: Record<string, unknown> = {}
+  if (task.mode === 'team' && teamChoice[task.id]) payload.team_id = teamChoice[task.id]
+  const session = await api.sessions.createForTask(task.id, payload)
   await load()
   router.push({ name: 'workbench', params: { sessionId: session.id } })
 }

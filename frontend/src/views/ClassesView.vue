@@ -50,6 +50,7 @@
             <td class="muted">在线 {{ g.metrics.online }} / 观看 {{ g.metrics.viewers }} / 订单 {{ g.metrics.orders }} / GMV {{ yuan(g.metrics.gmv_cents) }} 元</td>
             <td class="muted">{{ (g.latest_comments || []).join(' ｜ ') || '—' }}</td>
             <td>
+              <router-link class="btn sm ghost" :to="{ name: 'workbench', params: { sessionId: g.session_id } }">看货盘调研</router-link>
               <router-link class="btn sm ghost" :to="{ name: 'live', params: { sessionId: g.session_id } }">观察直播</router-link>
               <router-link class="btn sm ghost" :to="{ name: 'review', params: { sessionId: g.session_id } }">看复盘</router-link>
             </td>
@@ -58,25 +59,94 @@
         </tbody>
       </table>
     </div>
+
+    <div class="card">
+      <h3>竞赛与排行榜 <span class="muted">（同场对比：相同初始条件、按所选口径排名）</span></h3>
+      <div class="row" style="margin-bottom:12px">
+        <input v-model="compForm.name" class="input" style="max-width:260px" placeholder="竞赛名称，如：同场对比赛" />
+        <select v-model="compForm.metric" class="select" style="max-width:220px">
+          <option value="comprehensive">综合分（默认）</option>
+          <option value="gmv">GMV</option>
+          <option value="profit">利润（期末资金-初始资金）</option>
+          <option value="conversion">转化率</option>
+          <option value="compliance">合规分</option>
+          <option value="interaction">互动量</option>
+          <option value="fulfillment">履约率</option>
+        </select>
+        <select v-model.number="compForm.task_id" class="select" style="max-width:280px">
+          <option :value="0">不限任务（本班全部场次）</option>
+          <option v-for="t in tasks" :key="t.id" :value="t.id">{{ t.title }}</option>
+        </select>
+        <button class="btn sm" @click="createCompetition">创建竞赛</button>
+        <button class="btn ghost sm" @click="loadCompetitions">刷新</button>
+      </div>
+      <table class="table">
+        <thead><tr><th>竞赛</th><th>口径</th><th>状态</th><th>操作</th></tr></thead>
+        <tbody>
+          <tr v-for="c in competitions" :key="c.id">
+            <td>{{ c.name }}<div class="muted">#{{ c.id }}</div></td>
+            <td>{{ metricLabel(c.metric) }}</td>
+            <td><span class="tag" :class="c.status === 'running' ? 'ended' : ''">{{ c.status === 'running' ? '进行中' : '已结束' }}</span></td>
+            <td><button class="btn sm" @click="showLeaderboard(c)">查看排行榜</button></td>
+          </tr>
+          <tr v-if="!competitions.length"><td colspan="4" class="muted">暂无竞赛</td></tr>
+        </tbody>
+      </table>
+
+      <template v-if="leaderboard">
+        <h4 style="margin:16px 0 6px">排行榜 · {{ leaderboard.metric }}（{{ leaderboard.entries?.length || 0 }} 条）</h4>
+        <table class="table">
+          <thead><tr><th>名次</th><th>学生/场次</th><th>得分</th><th>GMV</th><th>利润</th><th>转化率</th><th>合规</th><th>互动</th><th>履约</th></tr></thead>
+          <tbody>
+            <tr v-for="e in leaderboard.entries" :key="e.session_id">
+              <td>{{ e.rank }}</td>
+              <td>{{ e.owner_name }}<div class="muted">{{ e.session_name }} · {{ e.session_status }}</div></td>
+              <td><b>{{ e.value }}</b></td>
+              <td>{{ yuan(e.by_metric?.gmv) }}</td>
+              <td>{{ yuan(e.by_metric?.profit) }}</td>
+              <td>{{ ((e.by_metric?.conversion || 0) * 100).toFixed(1) }}%</td>
+              <td>{{ e.by_metric?.compliance }}</td>
+              <td>{{ e.by_metric?.interaction }}</td>
+              <td>{{ ((e.by_metric?.fulfillment || 0) * 100).toFixed(0) }}%</td>
+            </tr>
+          </tbody>
+        </table>
+      </template>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted, reactive, ref } from 'vue'
 import { api, yuan } from '../api'
+import type { Task } from '../api/types'
 
 const classes = ref<Array<Record<string, any>>>([])
 const classId = ref(0)
 const report = ref<Record<string, any> | null>(null)
 const patrol = ref<Record<string, any> | null>(null)
+const tasks = ref<Task[]>([])
+const competitions = ref<Array<Record<string, any>>>([])
+const leaderboard = ref<Record<string, any> | null>(null)
 const error = ref('')
+
+const compForm = reactive({ name: '同场对比赛', metric: 'comprehensive', task_id: 0 })
+
+function metricLabel(metric: string) {
+  return {
+    comprehensive: '综合分', gmv: 'GMV', profit: '利润', conversion: '转化率',
+    compliance: '合规', interaction: '互动', fulfillment: '履约率'
+  }[metric] || metric
+}
 
 async function loadClasses() {
   error.value = ''
   try {
     classes.value = await api.classes.list()
     if (classes.value.length && !classId.value) classId.value = classes.value[0].id
+    tasks.value = (await api.tasks.list({ page_size: 50 })).items
     await loadDetail()
+    await loadCompetitions()
   } catch (e) { error.value = (e as Error).message }
 }
 
@@ -86,6 +156,34 @@ async function loadDetail() {
   try {
     report.value = await api.classes.report(classId.value)
     patrol.value = await api.classes.patrol(classId.value)
+  } catch (e) { error.value = (e as Error).message }
+}
+
+async function loadCompetitions() {
+  if (!classId.value) return
+  try {
+    competitions.value = await api.competitions.list({ class_id: classId.value })
+    leaderboard.value = null
+  } catch (e) { error.value = (e as Error).message }
+}
+
+async function createCompetition() {
+  error.value = ''
+  try {
+    await api.competitions.create({
+      class_id: classId.value,
+      name: compForm.name,
+      metric: compForm.metric,
+      task_id: compForm.task_id || null
+    })
+    await loadCompetitions()
+  } catch (e) { error.value = (e as Error).message }
+}
+
+async function showLeaderboard(comp: Record<string, any>) {
+  error.value = ''
+  try {
+    leaderboard.value = await api.competitions.leaderboard(comp.id)
   } catch (e) { error.value = (e as Error).message }
 }
 

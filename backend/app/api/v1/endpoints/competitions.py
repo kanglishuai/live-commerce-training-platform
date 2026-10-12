@@ -44,9 +44,14 @@ def _session_metrics(db: DbDep, session: TrainingSession) -> dict:
         ).scalar_one()
     )
     violations = _violation_count(db, session.id)
+    task = db.get(Task, session.task_id)
+    initial_fund = task.initial_fund_cents if task else 0
     return {
         "gmv": int(m.get("gmv_cents", 0)),
-        "profit": session.fund_balance_cents,
+        # 利润口径与评分一致：期末资金 - 初始资金（不含库存残值，库存残值在成绩明细中单列）
+        "profit": session.fund_balance_cents - initial_fund,
+        "fund_balance": session.fund_balance_cents,
+        "initial_fund": initial_fund,
         "conversion": round(orders / clicks, 4) if clicks else 0.0,
         "compliance": max(0.0, 100 - 20 * violations),
         "interaction": int(m.get("likes", 0)) + int(m.get("comments", 0)),

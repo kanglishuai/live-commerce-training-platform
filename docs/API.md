@@ -562,7 +562,7 @@ pending ──同意──▶ approved ──结案──▶ closed
     "dimensions": { "operation": 49.8, "process": 100.0, "service": 100.0, "compliance": 80, "review": 100.0 },
     "weights": { "operation": 30, "process": 25, "service": 20, "compliance": 15, "review": 10 },
     "objective_ratio": 0.6,
-    "evidence": { "profit_cents": -838900, "checklist_passed": "9/9", "orders_settled": "8/8",
+    "evidence": { "profit_cents": -17211, "checklist_passed": "9/9", "orders_settled": "8/8",
                   "after_sales_resolved": "1/1", "violations": 1, "report_status": "scored" }
   },
   "subjective_score": 88, "comprehensive_score": 84.3,
@@ -584,7 +584,7 @@ pending ──同意──▶ approved ──结案──▶ closed
 | GET | `/competitions/{id}/leaderboard` | —— | 排行榜（含各口径原始值） |
 | POST | `/competitions/{id}/close` | 教师/管理员 | 结束竞赛 |
 
-metric 口径：`gmv` / `profit` / `conversion` / `compliance` / `interaction` / `fulfillment` / `comprehensive`（默认，取客观综合分）。
+metric 口径：`gmv` / `profit`（利润 = 期末资金 − 初始资金）/ `conversion` / `compliance` / `interaction` / `fulfillment` / `comprehensive`（默认，取客观综合分）。
 
 **GET `/competitions/{id}/leaderboard`**
 
@@ -594,8 +594,8 @@ metric 口径：`gmv` / `profit` / `conversion` / `compliance` / `interaction` /
   "entries": [
     { "rank": 1, "session_id": 2, "owner_id": 4, "owner_name": "学生01",
       "session_name": "学生01 第1场", "session_status": "submitted", "value": 81.9,
-      "by_metric": { "gmv": 39900, "profit": -838900, "conversion": 0.0537, "compliance": 80,
-                     "interaction": 325, "fulfillment": 1.0, "orders": 8 } }
+      "by_metric": { "gmv": 39900, "profit": -464411, "fund_balance": 4535589, "initial_fund": 5000000,
+                     "conversion": 0.0537, "compliance": 80, "interaction": 325, "fulfillment": 1.0, "orders": 8 } }
   ]
 }
 ```

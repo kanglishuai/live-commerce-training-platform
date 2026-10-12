@@ -259,6 +259,16 @@ def main() -> int:
             r.status_code == 200 and r.json()["source"] == "rule",
             brief(r),
         )
+        r = client.post(
+            f"{API}/sessions/{sid}/live/replies",
+            json={"comment_event_id": comments[0]["id"], "text": "亲，这款直播价叠加优惠券更划算，放心拍~"},
+            headers=stu1,
+        )
+        check(
+            "主播/客服回复评论（记入场次证据）",
+            r.status_code == 200 and r.json()["type"] == "reply",
+            brief(r),
+        )
 
     r = client.post(
         f"{API}/sessions/{sid}/live/speech",
@@ -448,6 +458,19 @@ def main() -> int:
     check("提交审核", r.status_code == 200 and r.json()["status"] == "pending", brief(r))
     r = client.post(f"{API}/agents/{agent_id}/review", json={"action": "approve", "note": "话术合规，可上架"}, headers=teacher)
     check("教师审核上架班级市场", r.status_code == 200 and r.json()["status"] == "published", brief(r))
+
+    r = client.post(
+        f"{API}/tasks/{task_id}/agent-assignments",
+        json={"agent_id": agent_id, "instructions": "用它完成 3 个高频咨询的应答，提交运行记录"},
+        headers=teacher,
+    )
+    check(
+        "教师布置智能体作业",
+        r.status_code == 200 and any(a.get("agent_id") == agent_id for a in r.json().get("agent_assignments") or []),
+        brief(r),
+    )
+    r = client.get(f"{API}/tasks/{task_id}/agent-runs", headers=teacher)
+    check("教师查看作业运行记录（含学生与轨迹）", r.status_code == 200 and r.json()["total"] >= 1, brief(r))
 
     # ---------- 12. 严格任务：开播检查阻断 ----------
     teacher_tasks = client.get(f"{API}/tasks", params={"page_size": 50}, headers=teacher).json()["items"]

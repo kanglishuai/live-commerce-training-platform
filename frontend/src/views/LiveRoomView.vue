@@ -66,7 +66,10 @@
           <div v-for="ev in events" :key="ev.id" class="feed-item">
             <div>{{ renderEvent(ev) }}</div>
             <div class="meta">#{{ ev.id }} · {{ ev.type }} · 来源 {{ ev.source || '-' }} · {{ ev.ts }}</div>
-            <button v-if="ev.type === 'comment'" class="btn sm ghost" style="margin-top:6px" @click="suggest(ev)">AI 回复建议</button>
+            <div class="row" v-if="ev.type === 'comment'" style="margin-top:6px">
+              <button class="btn sm ghost" @click="suggest(ev)">AI 回复建议</button>
+              <button class="btn sm" @click="replyTo(ev)">回复该评论</button>
+            </div>
           </div>
           <div v-if="!events.length" class="muted">暂无事件：开播后点击「推进仿真」或勾选自动推进</div>
         </div>
@@ -274,7 +277,21 @@ async function suggest(ev: LiveEvent) {
   error.value = ''
   try {
     const data = await api.live.suggestReply(sessionId, ev.id)
-    window.alert(`回复建议（来源：${data.source}）：\n${data.text}`)
+    const text = window.prompt(`回复建议（来源：${data.source}，可直接发送或修改后发送）`, data.text)
+    if (text) {
+      await api.live.reply(sessionId, ev.id, text)
+      await pullEvents()
+    }
+  } catch (e) { error.value = (e as Error).message }
+}
+
+async function replyTo(ev: LiveEvent) {
+  const text = window.prompt('输入回复内容（客服/主播回复将记入场次证据）', '亲，感谢关注～')
+  if (!text) return
+  error.value = ''
+  try {
+    await api.live.reply(sessionId, ev.id, text)
+    await pullEvents()
   } catch (e) { error.value = (e as Error).message }
 }
 

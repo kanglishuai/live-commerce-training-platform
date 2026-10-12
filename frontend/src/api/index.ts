@@ -16,7 +16,15 @@ export const api = {
       client.get<Page<Task>>('/tasks', { params }).then((r) => r.data),
     get: (id: number) => client.get<Task>(`/tasks/${id}`).then((r) => r.data),
     create: (payload: Record<string, unknown>) => client.post<Task>('/tasks', payload).then((r) => r.data),
-    publish: (id: number) => client.post<Task>(`/tasks/${id}/publish`).then((r) => r.data)
+    publish: (id: number) => client.post<Task>(`/tasks/${id}/publish`).then((r) => r.data),
+    assignAgent: (taskId: number, agentId: number, instructions: string) =>
+      client.post<Task>(`/tasks/${taskId}/agent-assignments`, { agent_id: agentId, instructions }).then((r) => r.data),
+    agentRuns: (taskId: number) =>
+      client
+        .get<{ items: Array<Record<string, any>>; total: number }>(`/tasks/${taskId}/agent-runs`, {
+          params: { page_size: 50 }
+        })
+        .then((r) => r.data)
   },
   sessions: {
     createForTask: (taskId: number, payload: Record<string, unknown> = {}) =>
@@ -84,6 +92,8 @@ export const api = {
         .then((r) => r.data),
     control: (sessionId: number, action: string, payload: Record<string, unknown> = {}) =>
       client.post<LiveEvent>(`/sessions/${sessionId}/live/control`, { action, payload }).then((r) => r.data),
+    reply: (sessionId: number, commentEventId: number, text: string) =>
+      client.post<LiveEvent>(`/sessions/${sessionId}/live/replies`, { comment_event_id: commentEventId, text }).then((r) => r.data),
     suggestReply: (sessionId: number, commentEventId: number) =>
       client
         .post<{ text: string; source: string }>(`/sessions/${sessionId}/live/replies/suggest`, {
@@ -122,7 +132,17 @@ export const api = {
   classes: {
     list: () => client.get<Array<Record<string, any>>>('/classes').then((r) => r.data),
     report: (classId: number) => client.get(`/classes/${classId}/report`).then((r) => r.data),
-    patrol: (classId: number) => client.get(`/classes/${classId}/patrol`).then((r) => r.data)
+    patrol: (classId: number) => client.get(`/classes/${classId}/patrol`).then((r) => r.data),
+    teams: (classId: number) =>
+      client.get<Array<Record<string, any>>>(`/classes/${classId}/teams`).then((r) => r.data)
+  },
+  competitions: {
+    list: (params: Record<string, unknown> = {}) =>
+      client.get<Array<Record<string, any>>>('/competitions', { params }).then((r) => r.data),
+    create: (payload: { class_id: number; name: string; metric: string; task_id?: number | null }) =>
+      client.post<Record<string, any>>('/competitions', payload).then((r) => r.data),
+    leaderboard: (competitionId: number) =>
+      client.get<Record<string, any>>(`/competitions/${competitionId}/leaderboard`).then((r) => r.data)
   },
   agents: {
     list: (params: Record<string, unknown> = {}) =>
