@@ -14,6 +14,7 @@ venv/
 # 运行态数据
 *.db
 *.sqlite3
+backend/var/
 
 # 前端
 node_modules/
