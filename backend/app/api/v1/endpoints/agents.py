@@ -21,7 +21,7 @@ from app.db.base import utcnow
 from app.models.agent import Agent, AgentRun
 from app.models.evaluation import Report
 from app.models.task import TrainingSession
-from app.models.user import User
+from app.models.user import Klass, User
 from app.schemas.agent import (
     AdoptIn,
     AdoptOut,
@@ -131,6 +131,31 @@ def list_agents(
         & (Agent.class_id == user.class_id),
         Agent.owner_id == user.id,
     )
+    if user.role == Role.TEACHER:
+        # 教师：本班班级共享市场 + 本班学生提交的待审核队列（审核通道，19.4 场景）
+        my_class_ids = select(Klass.id).where(Klass.teacher_id == user.id)
+        class_market = (
+            (Agent.scope == AgentScope.CLASS)
+            & (Agent.status == AgentStatus.PUBLISHED)
+            & Agent.class_id.in_(my_class_ids)
+        )
+        student_ids = select(User.id).where(User.class_id.in_(my_class_ids))
+        review_queue = (
+            (Agent.status == AgentStatus.PENDING)
+            & (Agent.scope == AgentScope.PERSONAL)
+            & Agent.owner_id.in_(student_ids)
+        )
+        market = or_(market, class_market, review_queue)
+
+    elif user.role == Role.ADMIN:
+        # 管理员：内置/班级市场全量 + 全部待审核 + 自己创建的
+        market = or_(
+            Agent.scope == AgentScope.BUILTIN,
+            Agent.scope == AgentScope.CLASS,
+            Agent.status == AgentStatus.PENDING,
+            Agent.owner_id == user.id,
+        )
+
     stmt = select(Agent).where(market)
     count_stmt = select(func.count(Agent.id)).where(market)
     if scope:

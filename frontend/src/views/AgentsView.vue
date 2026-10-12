@@ -79,6 +79,21 @@
                   <button class="btn sm ghost" :disabled="!runResult.id" @click="adopt('report')">采纳到复盘</button>
                 </div>
                 <p v-if="!runResult.id" class="muted">预演结果不落库，如需采纳请先「正式运行」。</p>
+                <template v-if="runResult.id">
+                  <div class="row" style="margin-top:12px">
+                    <span class="muted">结果评分</span>
+                    <select v-model.number="runRating" class="select" style="max-width:150px">
+                      <option :value="5">5 · 准确可采纳</option>
+                      <option :value="4">4 · 基本可用</option>
+                      <option :value="3">3 · 需人工改写</option>
+                      <option :value="2">2 · 偏离口径</option>
+                      <option :value="1">1 · 不可用</option>
+                    </select>
+                    <input v-model="runRatingComment" class="input" style="max-width:280px" placeholder="评分说明（可选），如：理赔口径准确" />
+                    <button class="btn sm ghost" @click="rateRun">提交评分</button>
+                    <span v-if="runResult.rating_score" class="muted">已评分 {{ runResult.rating_score }} 分{{ runResult.rating_comment ? `：${runResult.rating_comment}` : '' }}</span>
+                  </div>
+                </template>
               </div>
             </template>
           </template>
@@ -168,6 +183,9 @@ const selected = ref<Agent | null>(null)
 const prompt = ref('顾客说收到货有破损怎么办？')
 const runSessionId = ref<number | null>(null)
 const runResult = ref<(AgentRun & { persist?: boolean }) | null>(null)
+// 运行结果评分（1-5）：人机协同评价依据，随运行记录落库
+const runRating = ref(5)
+const runRatingComment = ref('')
 const error = ref('')
 const notice = ref('')
 
@@ -246,6 +264,16 @@ async function adopt(target: 'script' | 'report') {
   try {
     await api.agents.adopt(runResult.value.id, target)
     notice.value = `已采纳写入${target === 'script' ? '脚本' : '复盘'}`
+  } catch (e) { error.value = (e as Error).message }
+}
+
+async function rateRun() {
+  if (!runResult.value?.id) return
+  error.value = ''; notice.value = ''
+  try {
+    const updated = await api.agents.rateRun(runResult.value.id, runRating.value, runRatingComment.value)
+    runResult.value = { ...runResult.value, rating_score: updated.rating_score, rating_comment: updated.rating_comment }
+    notice.value = `已评分 ${runRating.value} 分（作为人机协同评价依据）`
   } catch (e) { error.value = (e as Error).message }
 }
 

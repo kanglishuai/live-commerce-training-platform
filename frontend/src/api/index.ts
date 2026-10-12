@@ -156,6 +156,8 @@ export const api = {
       client.post(`/agents/${agentId}/rehearse`, { prompt, context: {} }).then((r) => r.data),
     adopt: (runId: number, target: 'script' | 'report') =>
       client.post(`/agent-runs/${runId}/adopt`, { target }).then((r) => r.data),
+    rateRun: (runId: number, score: number, comment = '') =>
+      client.post<AgentRun>(`/agent-runs/${runId}/rating`, { score, comment }).then((r) => r.data),
     submit: (agentId: number) => client.post<Agent>(`/agents/${agentId}/submit`).then((r) => r.data),
     review: (agentId: number, action: 'approve' | 'reject', note = '') =>
       client.post<Agent>(`/agents/${agentId}/review`, { action, note }).then((r) => r.data)

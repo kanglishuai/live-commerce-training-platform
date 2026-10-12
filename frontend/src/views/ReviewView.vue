@@ -107,6 +107,15 @@
       <h3>数据口径说明</h3>
       <ul class="muted"><li v-for="(n, i) in metricsNotes" :key="i">{{ n }}</li></ul>
     </div>
+
+    <PromptDialog
+      :show="promptState.show"
+      :title="promptState.title"
+      :default-value="promptState.value"
+      :with-input="promptState.withInput"
+      @confirm="onPromptConfirm"
+      @cancel="promptState.show = false"
+    />
   </div>
 </template>
 
@@ -116,6 +125,7 @@ import { useRoute } from 'vue-router'
 import { api, yuan } from '../api'
 import type { Report, Score, Session } from '../api/types'
 import { useAuthStore } from '../stores/auth'
+import PromptDialog from '../components/PromptDialog.vue'
 
 const route = useRoute()
 const auth = useAuthStore()
@@ -131,6 +141,22 @@ const error = ref('')
 const notice = ref('')
 const subjective = ref<number>(85)
 const comment = ref('')
+
+// 内置浏览器/嵌入式 WebView 不支持 window.prompt（直接抛错），统一走应用内对话框
+const promptState = ref<{ show: boolean; title: string; value: string; withInput: boolean; onOk: (text: string) => Promise<void> }>({
+  show: false, title: '', value: '', withInput: true, onOk: async () => {}
+})
+function openPrompt(title: string, value: string, onOk: (text: string) => Promise<void>) {
+  promptState.value = { show: true, title, value, withInput: true, onOk }
+}
+function openConfirm(title: string, onOk: () => Promise<void>) {
+  promptState.value = { show: true, title, value: '', withInput: false, onOk: async () => { await onOk() } }
+}
+async function onPromptConfirm(text: string) {
+  const run = promptState.value.onOk
+  promptState.value.show = false
+  try { await run(text) } catch (e) { error.value = (e as Error).message }
+}
 
 const isTeacher = computed(() => auth.isTeacher)
 const statusLabel = computed(() => {
@@ -191,13 +217,11 @@ async function saveImprovement() {
 }
 
 async function submitReport() {
-  if (!window.confirm('提交后报告进入只读状态，确认提交？')) return
-  error.value = ''; notice.value = ''
-  try {
+  openConfirm('提交后报告进入只读状态，确认提交？', async () => {
     await api.reviews.updateReport(sessionId, improvement.value)
     report.value = await api.reviews.submitReport(sessionId)
     notice.value = '复盘已提交并锁定'
-  } catch (e) { error.value = (e as Error).message }
+  })
 }
 
 async function submitScore() {
@@ -209,14 +233,11 @@ async function submitScore() {
 }
 
 async function returnReport() {
-  const reason = window.prompt('退回原因（学生将可修改并重新提交）')
-  if (!reason) return
-  error.value = ''
-  try {
+  openPrompt('退回原因（学生将可修改并重新提交）', '', async (reason) => {
     await api.reviews.returnReport(sessionId, reason)
     await loadAll()
     notice.value = '已退回复盘'
-  } catch (e) { error.value = (e as Error).message }
+  })
 }
 
 onMounted(loadAll)

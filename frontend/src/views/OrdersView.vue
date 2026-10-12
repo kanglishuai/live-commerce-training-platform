@@ -19,6 +19,14 @@
       <p class="muted" style="margin:8px 0 0">未完成履约与售后的场次不能提交复盘（系统会拦截）。</p>
     </div>
 
+    <PromptDialog
+      :show="promptState.show"
+      :title="promptState.title"
+      :default-value="promptState.value"
+      @confirm="onPromptConfirm"
+      @cancel="promptState.show = false"
+    />
+
     <div class="card">
       <h3>订单（{{ orders.length }}）</h3>
       <table class="table">
@@ -81,6 +89,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { api, yuan } from '../api'
 import type { AfterSale, Order, Session } from '../api/types'
+import PromptDialog from '../components/PromptDialog.vue'
 
 const route = useRoute()
 const sessionId = Number(route.params.sessionId)
@@ -90,6 +99,19 @@ const orders = ref<Order[]>([])
 const afterSales = ref<AfterSale[]>([])
 const statusFilter = ref('')
 const error = ref('')
+
+// 内置浏览器/嵌入式 WebView 不支持 window.prompt（直接抛错），统一走应用内对话框
+const promptState = ref<{ show: boolean; title: string; value: string; onOk: (text: string) => Promise<void> }>({
+  show: false, title: '', value: '', onOk: async () => {}
+})
+function openPrompt(title: string, value: string, onOk: (text: string) => Promise<void>) {
+  promptState.value = { show: true, title, value, onOk }
+}
+async function onPromptConfirm(text: string) {
+  const run = promptState.value.onOk
+  promptState.value.show = false
+  try { await run(text) } catch (e) { error.value = (e as Error).message }
+}
 
 const statusLabel = computed(() => {
   const map: Record<string, string> = { preparing: '准备中', live: '直播中', paused: '已暂停', ended: '已下播', submitted: '已提交' }
@@ -132,14 +154,11 @@ async function advance(order: Order, node: string) {
   try { await api.orders.advance(order.id, node); await loadOrders() } catch (e) { error.value = (e as Error).message }
 }
 
-async function openAfterSale(order: Order) {
-  const reason = window.prompt('售后原因（如：顾客反馈果径偏小）', '顾客反馈与描述不符')
-  if (!reason) return
-  error.value = ''
-  try {
+function openAfterSale(order: Order) {
+  openPrompt('售后原因（如：顾客反馈果径偏小）', '顾客反馈与描述不符', async (reason) => {
     await api.afterSales.create(sessionId, { order_id: order.id, type: 'refund', reason })
     await loadOrders()
-  } catch (e) { error.value = (e as Error).message }
+  })
 }
 
 async function resolve(afterSale: AfterSale, action: 'approve' | 'reject') {

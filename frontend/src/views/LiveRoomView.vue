@@ -95,6 +95,15 @@
         <button class="btn ghost sm" style="margin-top:12px" @click="manualTick">手动推进一次仿真</button>
       </div>
     </div>
+
+    <PromptDialog
+      :show="promptState.show"
+      :title="promptState.title"
+      :default-value="promptState.value"
+      :with-input="promptState.withInput"
+      @confirm="onPromptConfirm"
+      @cancel="promptState.show = false"
+    />
   </div>
 </template>
 
@@ -103,6 +112,7 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api, yuan } from '../api'
 import type { CartItem, LiveEvent, Session, Snapshot } from '../api/types'
+import PromptDialog from '../components/PromptDialog.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -242,11 +252,12 @@ async function resumeLive() {
 }
 
 async function stopLive() {
-  if (!window.confirm('确认下播？下播后将进入订单履约与数据复盘，不能再开播。')) return
-  const state = await api.live.stop(sessionId)
-  status.value = state.status
-  autoTick.value = false
-  await pullEvents()
+  openConfirm('确认下播？下播后将进入订单履约与数据复盘，不能再开播。', async () => {
+    const state = await api.live.stop(sessionId)
+    status.value = state.status
+    autoTick.value = false
+    await pullEvents()
+  })
 }
 
 async function sendSpeech() {
@@ -288,22 +299,35 @@ async function suggest(ev: LiveEvent) {
   error.value = ''
   try {
     const data = await api.live.suggestReply(sessionId, ev.id)
-    const text = window.prompt(`回复建议（来源：${data.source}，可直接发送或修改后发送）`, data.text)
-    if (text) {
+    openPrompt(`回复建议（来源：${data.source}，可直接发送或修改后发送）`, data.text, async (text) => {
       await api.live.reply(sessionId, ev.id, text)
       await pullEvents()
-    }
+    })
   } catch (e) { error.value = (e as Error).message }
 }
 
-async function replyTo(ev: LiveEvent) {
-  const text = window.prompt('输入回复内容（客服/主播回复将记入场次证据）', '亲，感谢关注～')
-  if (!text) return
-  error.value = ''
-  try {
+function replyTo(ev: LiveEvent) {
+  openPrompt('输入回复内容（客服/主播回复将记入场次证据）', '亲，感谢关注～', async (text) => {
     await api.live.reply(sessionId, ev.id, text)
     await pullEvents()
-  } catch (e) { error.value = (e as Error).message }
+  })
+}
+
+// 内置浏览器/嵌入式 WebView 不支持 window.prompt（直接抛错），统一走应用内对话框
+const promptState = ref<{ show: boolean; title: string; value: string; withInput: boolean; onOk: (text: string) => Promise<void> }>({
+  show: false, title: '', value: '', withInput: true, onOk: async () => {}
+})
+function openPrompt(title: string, value: string, onOk: (text: string) => Promise<void>) {
+  promptState.value = { show: true, title, value, withInput: true, onOk }
+}
+// 原生 confirm 在部分嵌入式环境会阻塞页面脚本，同样走应用内确认
+function openConfirm(title: string, onOk: () => Promise<void>) {
+  promptState.value = { show: true, title, value: '', withInput: false, onOk: async () => { await onOk() } }
+}
+async function onPromptConfirm(text: string) {
+  const run = promptState.value.onOk
+  promptState.value.show = false
+  try { await run(text) } catch (e) { error.value = (e as Error).message }
 }
 
 onMounted(async () => {

@@ -226,5 +226,6 @@ export interface AgentRun {
   latency_ms: number
   model: string
   rating_score: number | null
+  rating_comment: string
   adopted_target: string | null
 }
